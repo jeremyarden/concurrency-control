@@ -11,10 +11,21 @@ LockManagerA::LockManagerA(deque<Txn*>* ready_txns) {
 }
 
 bool LockManagerA::WriteLock(Txn* txn, const Key& key) {
-  // CPSC 438/538:
-  //
-  // Implement this method!
-  return true;
+  LockRequest request(EXCLUSIVE, txn);
+  //cek udah/belum ada resource itu
+  if (!lock_table_[key]){
+    lock_table_[key] = new deque<LockRequest>();
+  }
+  deque<LockRequest>* reqQueue = lock_table_[key];
+  reqQueue->push_back(request);
+
+  //cek udah ada yang request untuk resource itu
+  if (reqQueue->size() == 1){
+    return true;
+  } else {
+    txn_waits_[txn]+=1;
+    return false;
+  }
 }
 
 bool LockManagerA::ReadLock(Txn* txn, const Key& key) {
@@ -24,16 +35,51 @@ bool LockManagerA::ReadLock(Txn* txn, const Key& key) {
 }
 
 void LockManagerA::Release(Txn* txn, const Key& key) {
-  // CPSC 438/538:
-  //
-  // Implement this method!
+  deque<LockRequest>* reqQueue = lock_table_[key];
+  bool hadLock = false;
+  if (reqQueue->front().txn_ == txn){
+    hadLock = true;
+  }
+
+  //cari & hapus request
+  deque<LockRequest>::iterator i;
+  for(i=reqQueue->begin(); i!=reqQueue->end(); i++){
+    if(i->txn_ == txn){
+      reqQueue->erase(i);
+      break;
+    }
+  }
+  
+  //cari request yang akan dijalankan selanjutnya
+  if(reqQueue->size() > 0 && hadLock){
+    LockRequest next_req = reqQueue->front();
+
+    Txn *txn = next_req.txn_;
+    int wait = txn_waits_[txn] - 1;
+    
+    if(wait == 0){
+      txn_waits_.erase(txn);
+      ready_txns_->push_back(txn);
+    }
+  }
 }
 
 LockMode LockManagerA::Status(const Key& key, vector<Txn*>* owners) {
-  // CPSC 438/538:
-  //
-  // Implement this method!
-  return UNLOCKED;
+  owners->clear();
+
+  //cek udah/belum ada resource itu
+  if (!lock_table_[key]){
+    lock_table_[key] = new deque<LockRequest>();
+  } 
+  deque<LockRequest>* reqQueue = lock_table_[key];
+
+  //cek resource itu ada yang request ato tidak
+  if (reqQueue->size() == 0){
+    return UNLOCKED;
+  } else {
+    owners->push_back(reqQueue->front().txn_);
+    return EXCLUSIVE;
+  }
 }
 
 LockManagerB::LockManagerB(deque<Txn*>* ready_txns) {
