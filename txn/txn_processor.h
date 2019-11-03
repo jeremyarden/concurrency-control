@@ -78,6 +78,9 @@ class TxnProcessor {
   // OCC version of scheduler.
   void RunOCCScheduler();
 
+  void CleanupAndRestart(Txn *transaction);
+  bool ValidateOCCTimestamp(const Txn &transaction) const;
+
   // OCC version of scheduler with parallel validation.
   void RunOCCParallelScheduler();
   
