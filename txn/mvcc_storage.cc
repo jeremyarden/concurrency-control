@@ -70,7 +70,15 @@ bool MVCCStorage::CheckWrite(Key key, int txn_unique_id) {
 		if (mvcc_data_[key]->empty()){
 			return true;
 		}
-		return txn_unique_id >= mvcc_data_[key].back()->max_read_id_;
+		int max_version_id_ = 0;
+		bool result = false;
+        for (deque<Version*>::iterator it = mvcc_data_[key]->begin(); it != mvcc_data_[key]->end(); ++it) {
+            if ((max_version_id_< (*it)->version_id_) && ((*it)->version_id_ <= txn_unique_id)){
+				max_version_id_ = (*it)->version_id_;
+				result = txn_unique_id >= (*it)->max_read_id_;
+			}
+        }
+		return result;
 	}
     return true;
 }
