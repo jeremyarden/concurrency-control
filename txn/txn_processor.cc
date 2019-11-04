@@ -257,15 +257,58 @@ void TxnProcessor::ApplyWrites(Txn* txn) {
   }
 }
 
-void TxnProcessor::RunOCCScheduler() {
-  // CPSC 438/538:
-  //
-  // Implement this method!
-  //
-  // [For now, run serial scheduler in order to make it through the test
-  // suite]
+void TxnProcessor::CleanupAndRestart(Txn *transaction) {
+    transaction->reads_.empty();
+    transaction->writes_.empty();
+    transaction->status_ = INCOMPLETE;
+}
 
-  RunSerialScheduler();
+bool TxnProcessor::ValidateOCCTimestamp(const Txn &transaction) const {
+
+    for (auto&& key : transaction.writeset_) {
+        if (transaction.occ_start_time_ < storage_->Timestamp(key))
+            return false;
+    }
+
+    for (auto&& key : transaction.readset_) {
+        if (transaction.occ_start_time_ < storage_->Timestamp(key))
+            return false;
+    }
+
+    return true;
+}
+
+void TxnProcessor::RunOCCScheduler() {
+    // Loop when thread pool still active
+    while (tp_.Active()) {
+        Txn *transaction;
+        // run [txn] on its own thread
+        if (txn_requests_.Pop(&transaction)) {
+            tp_.RunTask(new Method<TxnProcessor, void, Txn*>(this, &TxnProcessor::ExecuteTxn,transaction));
+        }
+
+        // Check completed transactions in [completed_txns_]
+        Txn *finished_transaction;
+        while (completed_txns_.Pop(&finished_transaction)) {
+            if (finished_transaction->Status() != COMPLETED_A) {
+                bool transaction_valid = ValidateOCCTimestamp(*finished_transaction);
+                if (transaction_valid) {
+                    ApplyWrites(finished_transaction);
+                    transaction->status_ = COMMITTED;
+                } else {
+                    CleanupAndRestart(finished_transaction);
+                    mutex_.Lock();
+                    transaction->unique_id_ = next_unique_id_;
+                    next_unique_id_++;
+                    txn_requests_.Push(finished_transaction);
+                    mutex_.Unlock();
+                }
+            } else {
+                finished_transaction->status_ = ABORTED;
+            }
+            txn_results_.Push(finished_transaction);
+        }
+    }
 }
 
 void TxnProcessor::RunOCCParallelScheduler() {
