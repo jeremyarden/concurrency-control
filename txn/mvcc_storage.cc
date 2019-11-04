@@ -35,17 +35,6 @@ void MVCCStorage::Unlock(Key key) {
     mutexs_[key]->Unlock();
 }
 
-//mengembalikan version id terbesar dari data dengan key tertentu
-int MVCCStorage::MaxVersionId(Key key, int txn_unique_id){
-    int max_version_id_ = 0;
-    for (deque<Version*>::iterator it = mvcc_data_[key]->begin(); it != mvcc_data_[key]->end(); ++it) {
-        if ((*it)->version_id_ > max_version_id_ && (*it)->version_id_ <= txn_unique_id){
-            max_version_id_ = (*it)->version_id_;
-        }
-    }
-    return max_version_id_;
-}
-
 // MVCC Read
 bool MVCCStorage::Read(Key key, Value* result, int txn_unique_id) {
     //
