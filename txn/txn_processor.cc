@@ -335,6 +335,98 @@ void TxnProcessor::RunMVCCScheduler() {
   //
   // [For now, run serial scheduler in order to make it through the test
   // suite]
-  RunSerialScheduler();
+  while (tp_.Active()) 
+  {
+    Txn *newTxn;
+    if (txn_requests_.Pop(&newTxn)) 
+    {
+      tp_.RunTask(new Method<TxnProcessor, void, Txn*>(
+        this,
+        &TxnProcessor::MVCCExecuteTxn,
+        newTxn
+      ))
+    }
+
+    Txn *finishedTxn;
+    while (completed_txns_.Pop(&finishedTxn)) 
+    {
+      if (finishedTxn->Status() != COMPLETED_A) 
+      {
+        finishedTxn->status_ = ABORTED;
+      } 
+      else 
+      {
+        bool validTxn = true;
+        for (auto&& key : finishedTxn->writeset_)
+        {
+          storage_->Lock(key);
+        }
+
+        for (auto&& key : finishedTxn->writeset_)
+        {
+          if (!storage_->CheckWrite(key, finishedTxn->unique_id_))
+          {
+            validTxn = false;
+          }
+        }
+        if (validTxn)
+        {
+          ApplyWrites(finishedTxn);
+          for (auto&& key : newTxn->writeset_)
+          {
+            storage_->Unlock(key);
+          }
+          newTxn->status_ = COMMITTED;
+        }
+        else
+        {
+          for (auto&& key : newTxn->writeset_)
+          {
+            storage_->Unlock(key);
+          }
+
+          finishedTxn->reads_.empty();
+          finishedTxn->writes_.empty();
+          finishedTxn->status_ = INCOMPLETE;
+
+          mutex_.Lock();
+          newTxn->unique_id_ = next_unique_id_;
+          next_unique_id_++;
+          txn_requests_.Push(newTxn);
+          mutex_.Unlock();
+        }
+      }
+
+      txn_results_.Push(finishedTxn);
+    }
+  }
+}
+
+void TxnProcessor::MVCCExecuteTxn(Txn* txn)
+{
+  txn->occ_start_time_ = GetTime();
+
+  for (set<Key>::iterator iter = txn->readset_.begin(); iter != txn->readset_.end(); ++iter)
+  {
+    Value res;
+
+    if (storage_->Read(*iter, &res, txn->unique_id_))
+    {
+      txn->reads_[*iter] = res;
+    }
+  }
+
+  for (set<Key>::iterator iter = txn->writeset_.begin(); iter != txn->writeset_.end(); ++iter)
+  {
+    Value res;
+
+    if (storage_->Read(*iter, &res, txn->unique_id_))
+    {
+      txn->reads_[*iter] = res;
+    }
+  }
+
+  txn->Run();
+  completed_txns_.Push(txn);
 }
 
