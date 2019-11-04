@@ -134,6 +134,8 @@ class LockManagerB : public LockManager {
   virtual bool WriteLock(Txn* txn, const Key& key);
   virtual void Release(Txn* txn, const Key& key);
   virtual LockMode Status(const Key& key, vector<Txn*>* owners);
+ private:
+  unordered_map<Key, uint64_t> _numExclusiveWaiting;
 };
 
 #endif  // _LOCK_MANAGER_H_

@@ -16,8 +16,6 @@ TxnProcessor::TxnProcessor(CCMode mode)
     : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1) {
   if (mode_ == LOCKING_EXCLUSIVE_ONLY)
     lm_ = new LockManagerA(&ready_txns_);
-  else if (mode_ == LOCKING)
-    lm_ = new LockManagerB(&ready_txns_);
   
   // Create the storage
   if (mode_ == MVCC) {
@@ -52,7 +50,7 @@ void* TxnProcessor::StartScheduler(void * arg) {
 }
 
 TxnProcessor::~TxnProcessor() {
-  if (mode_ == LOCKING_EXCLUSIVE_ONLY || mode_ == LOCKING)
+  if (mode_ == LOCKING_EXCLUSIVE_ONLY)
     delete lm_;
     
   delete storage_;
@@ -81,7 +79,6 @@ Txn* TxnProcessor::GetTxnResult() {
 void TxnProcessor::RunScheduler() {
   switch (mode_) {
     case SERIAL:                 RunSerialScheduler(); break;
-    case LOCKING:                RunLockingScheduler(); break;
     case LOCKING_EXCLUSIVE_ONLY: RunLockingScheduler(); break;
     case OCC:                    RunOCCScheduler(); break;
     case P_OCC:                  RunOCCParallelScheduler(); break;

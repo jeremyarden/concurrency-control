@@ -4,7 +4,17 @@
 // Lock manager implementing deterministic two-phase locking as described in
 // 'The Case for Determinism in Database Systems'.
 
+#include <deque>
 #include "txn/lock_manager.h"
+
+using std::deque;
+
+LockManager::~LockManager() {
+  // Cleanup lock_table_
+  for (auto it = lock_table_.begin(); it != lock_table_.end(); it++) {
+    delete it->second;
+  }
+}
 
 LockManagerA::LockManagerA(deque<Txn*>* ready_txns) {
   ready_txns_ = ready_txns;
